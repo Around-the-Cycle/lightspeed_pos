@@ -12,6 +12,7 @@ require_relative 'orders'
 require_relative 'price_levels'
 require_relative 'sales'
 require_relative 'sale_lines'
+require_relative 'serializeds'
 require_relative 'shops'
 require_relative 'special_orders'
 require_relative 'vendors'
@@ -36,6 +37,7 @@ module Lightspeed
       :PriceLevels,
       :Sales,
       :SaleLines,
+      :Serializeds,
       :Shops,
       :SpecialOrders,
       :Vendors,
