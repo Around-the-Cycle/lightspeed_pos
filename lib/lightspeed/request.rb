@@ -21,7 +21,7 @@ module Lightspeed
     end
 
     def self.base_path
-      "/API"
+      "/API/V3"
     end
 
     def initialize(client, method:, path:, params: nil, body: nil)
