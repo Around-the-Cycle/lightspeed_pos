@@ -1,16 +1,30 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# Interactive console for exploring the Lightspeed POS API.
+# Loads credentials from .env, handles OAuth token refresh automatically,
+# and drops into a pry session with `client` and `account` helpers ready to use.
+#
+# Usage: bundle exec bin/console
+
 require 'bundler/setup'
-require 'dotenv'
+require 'dotenv/load'
+require 'net/http'
+require 'uri'
+require 'json'
 require 'lightspeed_pos'
 
 Lightspeed::Request.verbose = true
 
 class TokenHolder
-  def initialize(token: nil, refresh_token: nil)
+  # REFRESH_URL = "https://cloud.merchantos.com/oauth/access_token.php"
+  REFRESH_URL = "https://cloud.lightspeedapp.com/oauth/access_token.php"
+
+  def initialize(token:, refresh_token:, client_id:, client_secret:)
     @token = token
     @refresh_token = refresh_token
+    @client_id = client_id
+    @client_secret = client_secret
   end
 
   def oauth_token
@@ -18,28 +32,69 @@ class TokenHolder
   end
 
   def refresh_oauth_token
-    raise "Token expired, refresh not yet implemented"
+    puts "Access token expired, refreshing..."
+
+    uri = URI(REFRESH_URL)
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = true
+    http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+
+    request = Net::HTTP::Post.new(uri.path)
+    request.set_form_data(
+      "grant_type"    => "refresh_token",
+      "client_id"     => @client_id,
+      "client_secret" => @client_secret,
+      "refresh_token" => @refresh_token
+    )
+
+    response = http.request(request)
+    puts "Refresh response: #{response.code}"
+    puts "Refresh body: #{response.body.inspect}"
+
+    data = JSON.parse(response.body)
+
+    if data["access_token"]
+      @token = data["access_token"]
+      @refresh_token = data["refresh_token"] if data["refresh_token"]
+      puts "Token refreshed successfully."
+    else
+      raise "Token refresh failed: #{data.inspect}"
+    end
   end
 end
 
-# require "pry"
-# Pry.start
-Dotenv.load
+%w[
+  LIGHTSPEED_OAUTH_TOKEN
+  LIGHTSPEED_OAUTH_REFRESH_TOKEN
+  LIGHTSPEED_CLIENT_ID
+  LIGHTSPEED_CLIENT_SECRET
+].each do |var|
+  raise "#{var} is not set in .env" unless ENV[var]
+end
+
+$token_holder = TokenHolder.new(
+  token:         ENV.fetch('LIGHTSPEED_OAUTH_TOKEN'),
+  refresh_token: ENV.fetch('LIGHTSPEED_OAUTH_REFRESH_TOKEN'),
+  client_id:     ENV.fetch('LIGHTSPEED_CLIENT_ID'),
+  client_secret: ENV.fetch('LIGHTSPEED_CLIENT_SECRET')
+)
+
 def client
-  token = ENV.fetch('LIGHTSPEED_OAUTH_TOKEN', nil)
-  refresh_token = ENV.fetch('LIGHTSPEED_OAUTH_REFRESH_TOKEN', nil)
-
-  raise 'set LIGHTSPEED_OAUTH_TOKEN as an envorinment variable to use this' unless token
-
-  raise 'set LIGHTSPEED_OAUTH_REFRESH_TOKEN as an envorinment variable to use this' unless refresh_token
-
-  token_holder = Tokenholder.new(token: token, refresh_token: refresh_token)
-  @client ||= Lightspeed::Client.new(oauth_token_holder: token_holder)
+  @client ||= Lightspeed::Client.new(oauth_token_holder: $token_holder)
 end
 
 def account
-  client.accounts.first
+  @account ||= begin
+    all = client.accounts.all
+    account_id = ENV['LIGHTSPEED_ACCOUNT_ID']
+    account_id ? all.find { |a| a.id.to_s == account_id } || all.first : all.first
+  end
 end
 
-require 'irb'
-IRB.start
+puts "Lightspeed console ready."
+puts "  client   - Lightspeed::Client"
+puts "  account  - Account ##{ENV['LIGHTSPEED_ACCOUNT_ID'] || '(first)'}"
+puts ""
+
+require 'pry'
+binding.pry

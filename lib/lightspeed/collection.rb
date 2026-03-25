@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
+# require 'uri'
 require 'active_support/core_ext/string'
 require 'active_support/core_ext/array/wrap'
+# require 'active_support/core_ext/object/blank'
 
 module Lightspeed
   class Collection
@@ -38,6 +40,11 @@ module Lightspeed
       get(params: params)['@attributes']['count'].to_i
     end
     alias_method :length, :size
+
+    def count(params: {})
+      params = params.merge(count: 1, load_relations: nil)
+      get(params: params).dig('@attributes', 'count').to_i
+    end
 
     def each_loaded
       @resources ||= {}
@@ -167,7 +174,7 @@ module Lightspeed
       attributes = response["@attributes"]
       @next_page_url = nil
       if attributes
-        @next_page_url = attributes["next"].present? ? attributes["next"] : nil
+        @next_page_url = attributes["next"] || nil
       end
       Array.wrap(response[resource_name]).map do |resource|
         resource = resource_class.new(context: self, attributes: resource)
@@ -184,7 +191,7 @@ module Lightspeed
     end
 
     def get(params: {}, url: nil)
-      if url.present?
+      if url
         client.get(url: url)
       else
         params = { load_relations: load_relations_default }
