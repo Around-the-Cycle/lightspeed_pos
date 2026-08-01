@@ -174,7 +174,10 @@ module Lightspeed
       attributes = response["@attributes"]
       @next_page_url = nil
       if attributes
-        @next_page_url = attributes["next"] || nil
+        # API returns "next" => "" (not nil/omitted) when there is no next page, which is
+        # truthy in Ruby, so it must be checked for blankness rather than falsiness.
+        next_url = attributes["next"]
+        @next_page_url = next_url unless next_url.nil? || next_url.empty?
       end
       Array.wrap(response[resource_name]).map do |resource|
         resource = resource_class.new(context: self, attributes: resource)
